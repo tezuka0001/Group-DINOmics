@@ -19,3 +19,4 @@ wandb/
 *.jpg
 *.zip
 *.mp4
+*.python-version
