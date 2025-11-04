@@ -1,5 +1,7 @@
 # Group-DINOmics
 
+This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning**
+
 ## Environment
 Python 3.10.10
 PyTorch 2.1.0
@@ -28,7 +30,7 @@ The precomputed optical flow is published here (coming soon).
 We use a ball as a group-relevant object in our experiments.
 * Volleyball dataset
 Annotated ball locations in the frames are available here (https://github.com/mostafa-saad/deep-activity-rec).
-Decetcted ball locations using the WASB detector (https://github.com/nttcom/WASB-SBDT) are published here (coming soon) for Weakly Supervised GAR.
+Detected ball locations using the WASB detector (https://github.com/nttcom/WASB-SBDT) are published here (coming soon) for Weakly Supervised GAR.
 
 * NBA dataset
 Detected ball locations using the WASB detector are published here (coming soon), as in the Volleyball dataset.

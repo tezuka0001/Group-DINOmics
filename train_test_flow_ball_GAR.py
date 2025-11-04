@@ -114,7 +114,7 @@ parser.add_argument('--lama_model_dir', default='./lama/big-lama/', type=str, he
 parser.add_argument('--checkpoint_name', default='best.ckpt', type=str, help='LaMa checkpoint name')
 parser.add_argument('--mask_shape', default='circle', type=str, help='mask shape: circle or square')
 
-# detector-freeを使う場合の引数
+# use detector-free
 parser.add_argument('--ViT_Blocks', default=0, type=int, help='number of blocks for ViT backbone')
 parser.add_argument('--detector_free', action='store_true', help='use detector free backbone')
 parser.add_argument('--num_tokens', default=12, type=int, help='number of tokens for backbone')
