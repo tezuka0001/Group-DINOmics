@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gpu_id=5
+gpu_id=0
 
 common_params=(--dataset "volleyball" --data_path "/home-local/tezuka/" --backbone_learnable --backbone_learnable_layers 2 --num_frame 10 --num_total_frame 10 --num_activities 8 --lr 2.5e-5)
 

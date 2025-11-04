@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gpu_id=5
+gpu_id=0
 
 common_params=(--dataset "nba" --data_path "./Dataset/" --backbone_learnable --backbone_learnable_layers 2 --num_frame 12 --num_total_frame 71 --num_activities 9 --lr 2.5e-5)
 
