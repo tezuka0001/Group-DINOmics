@@ -122,7 +122,7 @@ parser.add_argument('--mask_shape', default='circle', type=str, help='mask shape
 
 args = parser.parse_args()
 args.use_flow = False
-args.use_flow_numpy = args.flow_pred or args.flow_recon
+args.use_flow_numpy = args.flow_pred
 
 def _save_tsne_with_text(xs, ys, labels, colors, out_path,
                          title="t-SNE (with IDs)", fontsize=6, alpha=0.9):

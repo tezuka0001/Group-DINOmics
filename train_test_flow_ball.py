@@ -1,4 +1,5 @@
 import os
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
 import torch
@@ -18,12 +19,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import models.models_flow_ball as models
+# if backbone=vjepa2
+# import models.models_flow_ball_vjepa as models
 from util.utils import *
 from dataloader.dataloader_bbox_flow_detector import read_dataset
 from sklearn.manifold import TSNE
 from tqdm import tqdm
 
-# import lama
+# lamaのimport
 from omegaconf import OmegaConf
 import yaml
 from lama.bin.predict_inpaint import *
@@ -63,20 +66,28 @@ parser.add_argument('--nheads_agg', default=4, type=int, help='number of heads f
 parser.add_argument('--enc_lr_ratio', default=0.5, type=float, help='encoder learning rate ratio')
 parser.add_argument('--enc_lr_decay', action='store_true', help='encoder learning rate decay')
 
+parser.add_argument('--recon_loss', default=0.1, type=float, help='reconstruction loss weight')
+
 # GPU
-parser.add_argument('--device', default="0", type=str, help='GPU device')
+parser.add_argument('--device', default="0, 1", type=str, help='GPU device')
+
+# Load model
+parser.add_argument('--pretrained_weights', type=str, default='', help='pretrained weights path')
+
+parser.add_argument('--head_list', default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], type=list, help='select_list')
 
 parser.add_argument('--hidden_size', default=1024, type=int, help='hidden size')
+
 parser.add_argument('--detector', action='store_true', help='use detector')
 
 # backbone parameters
 parser.add_argument('--backbone_learnable', action='store_true', help='use learnable last layer')
 parser.add_argument('--backbone_full_learnable', action='store_true', help='use full learnable last layer')
 parser.add_argument('--backbone_learnable_layers', default=1, type=int, help='number of learnable layers')
-parser.add_argument('--backbone', default='dinov3', type=str, help='backbone model, dinov2, clip, ViT, MAE, resnet50, vgg16, vgg19')
+parser.add_argument('--backbone', default='dinov2', type=str, help='backbone model, dinov2, clip, ViT, MAE, resnet50, vgg16, vgg19')
 parser.add_argument('--ViT_arch', default='vit-l', type=str, help='vit-l, vit-b')
 parser.add_argument('--use_lora', action='store_true', help='use LoRA for backbone')
-parser.add_argument('--lora_blocks', nargs='+', type=int, default=list(range(12, 24)), help='LoRA blocks to apply')
+parser.add_argument('--lora_blocks', nargs='+', type=int, default=list(range(12, 24)), help='LoRA blocks to apply, 22 or 24')
 parser.add_argument('--linear_probing', action='store_true', help='use linear probing for backbone')
 parser.add_argument('--spatial_backbone_mlp', action='store_true', help='use spatial mlp for backbone')
 parser.add_argument('--spatial_mlp_flow', action='store_true', help='use spatial flow mlp for backbone')
@@ -119,6 +130,9 @@ parser.add_argument('--people_mask_scale', type=float, default=1.0, help='scale 
 parser.add_argument('--lama_model_dir', default='./lama/big-lama/', type=str, help='LaMa model directory')
 parser.add_argument('--checkpoint_name', default='best.ckpt', type=str, help='LaMa checkpoint name')
 parser.add_argument('--mask_shape', default='circle', type=str, help='mask shape: circle or square')
+parser.add_argument('--ball_mask_size', default=40, type=int, help='mask_size')
+
+parser.add_argument('--use_wandb', action='store_true', help='use wandb for logging')
 
 args = parser.parse_args()
 args.use_flow = False
@@ -143,7 +157,6 @@ def save_best_model(epoch, model, optimizer, scheduler, hit_1, save_path):
         'hit@1': hit_1
     }
     torch.save(state, result_path)
-    
     if best_model_path is not None and os.path.exists(best_model_path):
         os.remove(best_model_path)
         print(f"Removed old model: {best_model_path}")
@@ -172,7 +185,6 @@ def save_best_model_by_loss(epoch, model, optimizer, scheduler, val_loss, save_p
 @torch.no_grad()
 def test_evaluation(train_loader_for_val, test_loader, model, args, save_path):
     model.eval()
-
     train_features_list = []
     train_labels_list = []
     for sample in tqdm(train_loader_for_val, desc="Extracting Train Features for Test"):
@@ -205,7 +217,6 @@ def test_evaluation(train_loader_for_val, test_loader, model, args, save_path):
     test_features = np.vstack(test_features_list)
     test_labels = np.hstack(test_labels_list)
     
-    # calulate hit@k and precision@k
     k_list = [1, 2, 3, 4, 5]
     nbrs_k = NearestNeighbors(n_neighbors=5, algorithm='brute').fit(train_features)
     distances_k, indices_k = nbrs_k.kneighbors(test_features)
@@ -280,6 +291,7 @@ def test_evaluation(train_loader_for_val, test_loader, model, args, save_path):
 
 
 def log_metrics_to_wandb(train_log, test_log=None):
+    """W&B へのログ出力（train, validate それぞれのログ項目を送信）"""
     if train_log is not None:
         wandb.log({
             "train_loss": train_log['loss'],
@@ -335,9 +347,15 @@ class Timer(object):
 
 def initialize_wandb(args):
     if args.dataset == 'volleyball':
-        project_name = "flow_ball_volleyball_numpy"
+        if args.pretrained_weights != '':
+            project_name = "flow_ball_volleyball_finetune"
+        else:
+            project_name = "flow_ball_volleyball"
     elif args.dataset == 'nba':
-        project_name = "flow_ball_nba_numpy"
+        if args.pretrained_weights != '':
+            project_name = "flow_ball_nba_finetune"
+        else:    
+            project_name = "flow_ball_nba"
     wandb.init(
         project=project_name,
         name=f'{args.dataset}_experiment_{time.strftime("%Y%m%d-%H%M%S")}',
@@ -360,6 +378,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
         mask_size_min, mask_size_max = 40 * args.image_width // 1280, 80 * args.image_width // 1280
     elif args.dataset == 'volleyball':
         mask_size = 40 * args.image_width // 1280
+        # mask_size = args.ball_mask_size * args.image_width // 1280
         mask_size_min, mask_size_max = 20 * args.image_width // 1280, 60 * args.image_width // 1280
         
     MAX_INPAINT = args.batch * args.num_frame
@@ -389,6 +408,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
             N = 12
         elif args.dataset == 'nba':
             N = 10
+            
         if args.ball_mask:
             B, T = images.shape[:2]
 
@@ -396,10 +416,9 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
             ball_gt_real[..., 0] = (ball_gt[..., 0] * args.image_width ).long()
             ball_gt_real[..., 1] = (ball_gt[..., 1] * args.image_height).long()
 
-
             imgs_r   = images.view(B * T, 3, args.image_height, args.image_width)
             coords_r = ball_gt_real.view(B * T, 2)
-            
+
             if args.frame_random:
                 mask = torch.rand(B * T, device='cuda') < args.inpaint_prob
             elif args.batch_random:
@@ -416,9 +435,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
                 buf_imgs[:num].copy_(imgs_r[mask])
                 buf_coords[:num].copy_(coords_r[mask])
                 out = apply_ball_mask_circle(buf_imgs[:num], buf_coords[:num], mask_size=mask_size)
-
                 imgs_r[mask] = out
-
             images = imgs_r.view(B, T, 3, args.image_height, args.image_width)
         if args.random_mask:
             mask_size_range = (mask_size_min, mask_size_max)
@@ -463,6 +480,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
                             do_ball[b * T : (b + 1) * T] = True
                 else:
                     do_ball = torch.ones(B * T, dtype=torch.bool, device='cuda')
+
                 ball_masks = generate_ball_masks(
                     normalized_batch=imgs_flat,
                     centers=ball_flat_real,
@@ -481,6 +499,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
                 bboxes_rescaled[..., 2] = (bboxes_flat[..., 2] / ori_h) * H
                 bboxes_rescaled[..., 1] = (bboxes_flat[..., 1] / ori_w) * W
                 bboxes_rescaled[..., 3] = (bboxes_flat[..., 3] / ori_w) * W
+
                 people_masks, people_masks_flags = generate_people_masks(
                     normalized_batch=imgs_flat,
                     bboxes=bboxes_rescaled,
@@ -493,7 +512,6 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
 
             combined_masks = torch.clamp(ball_masks + people_masks, 0.0, 1.0)  # (B⋅T, 1, H, W)
 
-            # inpainting
             inpainted_flat = inpaint_with_lama_masks(
                 normalized_batch=imgs_flat,
                 masks=combined_masks,
@@ -626,7 +644,8 @@ def train(args, train_loader, model, criterion, optimizer, epoch, lama_model):
         'loss_flow_temporal': losses_flow_temporal.avg,
         'grad_norm': grad_norms.avg,
     }
-    log_metrics_to_wandb(train_log, test_log=None)
+    if args.use_wandb:
+        log_metrics_to_wandb(train_log, test_log=None)
     return train_log
 
 @torch.no_grad()
@@ -639,7 +658,9 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
     losses_future_bbox = AverageMeter()
     losses_flow_spatial = AverageMeter()
     losses_flow_temporal = AverageMeter()
+
     model.eval()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_features_list = []
     train_labels_list = []
@@ -648,47 +669,60 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
             images, activities, _, _, bboxes, _ = sample
         else:
             images, activities, _, bboxes, _ = sample
-        images = images.cuda()
-        bboxes = bboxes.cuda()
+
+        images = images.to(device)
+        bboxes = bboxes.to(device)
+
         input_data = {'images': images, 'bboxes': bboxes}
         ret_dic = model(input_data)
-        video_features = ret_dic['video_features']
-        train_features_list.append(video_features.cpu().numpy())
-        train_labels_list.append(activities[:, 0].cpu().numpy())
-    train_features = np.vstack(train_features_list)
-    print("train_features NaN:", np.isnan(train_features).any())
-    train_labels = np.hstack(train_labels_list)
+        video_features = ret_dic['video_features']  # [B, D] on GPU
+
+        train_features_list.append(video_features.detach())
+        train_labels_list.append(activities[:, 0].to(device))
+
+    train_features = torch.cat(train_features_list, dim=0)  # [N_train, D]
+    train_labels = torch.cat(train_labels_list, dim=0)      # [N_train]
+    print("train_features NaN:", torch.isnan(train_features).any().item())
 
     query_features_list = []
     query_labels_list = []
+
     for sample in tqdm(test_loader, desc="Extracting Test Features"):
-        loss = torch.tensor(0.0).cuda()
-        loss_bbox = torch.tensor(0.0).cuda()
-        loss_temp_bbox = torch.tensor(0.0).cuda()
-        loss_future_bbox = torch.tensor(0.0).cuda()
-        loss_flow_spatial = torch.tensor(0.0).cuda()
-        loss_flow_temporal = torch.tensor(0.0).cuda()
+        loss = torch.tensor(0.0, device=device)
+        loss_bbox = torch.tensor(0.0, device=device)
+        loss_temp_bbox = torch.tensor(0.0, device=device)
+        loss_future_bbox = torch.tensor(0.0, device=device)
+        loss_flow_spatial = torch.tensor(0.0, device=device)
+        loss_flow_temporal = torch.tensor(0.0, device=device)
+
         if args.use_flow or args.use_flow_numpy:
             images, activities, ball_gt, flow, bboxes, _ = sample
-            flow = flow.cuda()
+            flow = flow.to(device)
         else:
             images, activities, ball_gt, bboxes, _ = sample
-        images = images.cuda()
-        ball_gt = ball_gt.cuda()
-        bboxes = bboxes.cuda()
+
+        images = images.to(device)
+        ball_gt = ball_gt.to(device)
+        bboxes = bboxes.to(device)
+
         B, T, _, _, _ = images.shape
         if args.dataset == 'volleyball':
             N = 12
         elif args.dataset == 'nba':
             N = 10
+        else:
+            N = bboxes.shape[2]
+
         input_data = {'images': images, 'bboxes': bboxes}
         ret_dic = model(input_data)
-        
+
+        # ===== Flow loss =====
         if args.flow_pred:
             bboxes_x_center = (((bboxes[:, :, :, 0] + bboxes[:, :, :, 2]) // 2).long())
             bboxes_y_center = (((bboxes[:, :, :, 1] + bboxes[:, :, :, 3]) // 2).long())
-            batch_indices = torch.arange(B).view(B, 1, 1).expand(B, T, N).cuda()
-            frame_indices = torch.arange(T).view(1, T, 1).expand(B, T, N).cuda()
+            batch_indices = torch.arange(B, device=device).view(B, 1, 1).expand(B, T, N)
+            frame_indices = torch.arange(T, device=device).view(1, T, 1).expand(B, T, N)
+
             if args.use_flow_numpy:
                 if args.image_width < 896:
                     flow = normalize_flow_minmax(flow)
@@ -705,48 +739,56 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
                     elif args.backbone == 'dinov3' or args.backbone == 'ViT' or args.backbone == 'MAE' or args.backbone == 'dino' or (args.backbone == 'clip' and args.ViT_arch == "vit-b") or args.backbone == 'siglip' or args.backbone == 'siglip2':
                         bboxes_x_center = ((bboxes_x_center * scale_x) // 16).long()
                         bboxes_y_center = ((bboxes_y_center * scale_y) // 16).long()
+
             flow_x = flow[batch_indices, frame_indices, 0, bboxes_y_center, bboxes_x_center]
             flow_y = flow[batch_indices, frame_indices, 1, bboxes_y_center, bboxes_x_center]
             flow_gt = torch.stack([flow_x, flow_y], dim=-1)
+
             spatial_flow_pred = ret_dic['pred_flow_spatial']
             temp_flow_pred = ret_dic['pred_flow_temporal']
+
             if args.spatial_flow_loss:
                 loss_flow_spatial = criterion(spatial_flow_pred, flow_gt)
                 loss += args.w_flow * loss_flow_spatial
             if args.temporal_flow_loss:
                 loss_flow_temporal = criterion(temp_flow_pred, flow_gt)
                 loss += args.w_flow * loss_flow_temporal
-        
+
+        # ===== Ball loss =====
         if args.ball_pred:
             bbox_pred = ret_dic['pred_bbox_spatial']
             temp_bbox_pred = ret_dic['pred_bbox_temporal']
+
             valid_frame_mask = (ball_gt != 0).any(dim=-1)
             bbox_pred_flat = bbox_pred.view(-1, bbox_pred.size(-1))
             temporal_bbox_pred_flat = temp_bbox_pred.view(-1, temp_bbox_pred.size(-1))
             ball_gt_flat = ball_gt.view(-1, ball_gt.size(-1))
             valid_frame_mask_flat = valid_frame_mask.view(-1)
+
             if valid_frame_mask_flat.any():
                 bbox_pred_valid = bbox_pred_flat[valid_frame_mask_flat]
                 temp_bbox_pred_valid = temporal_bbox_pred_flat[valid_frame_mask_flat]
                 ball_gt_valid = ball_gt_flat[valid_frame_mask_flat]
+
                 if args.spatial_loss:
                     loss_bbox = criterion(bbox_pred_valid, ball_gt_valid)
                     loss += args.w_ball * loss_bbox
                 if args.temporal_loss:
                     loss_temp_bbox = criterion(temp_bbox_pred_valid, ball_gt_valid)
                     loss += args.w_ball * loss_temp_bbox
+
                 if args.future_mask:
                     future_bbox_pred = ret_dic['pred_bbox_future']
                     future_bbox_pred = future_bbox_pred.view(B, T, T, -1)
-                    future_bbox_pred = future_bbox_pred.permute(1, 0, 2, 3)
-                    future_bbox_pred = future_bbox_pred.reshape(T, B * T, -1)
+                    future_bbox_pred = future_bbox_pred.permute(1, 0, 2, 3)        # [T, B, T, 4]
+                    future_bbox_pred = future_bbox_pred.reshape(T, B * T, -1)     # [T, B*T, 4]
                     future_bbox_pred_valid = future_bbox_pred[:, valid_frame_mask_flat]
                     ball_gt_valid_expand = ball_gt_valid.expand_as(future_bbox_pred_valid)
                     loss_future_bbox = criterion(future_bbox_pred_valid, ball_gt_valid_expand)
                     loss += args.w_ball * loss_future_bbox
-        
-        video_features_test = ret_dic['video_features']
-            
+
+        video_features_test = ret_dic['video_features']  # [B, D] on GPU
+
         if args.ball_pred and args.flow_pred:
             losses.update(loss.item(), B)
             losses_flow_spatial.update(loss_flow_spatial.item(), B)
@@ -763,21 +805,36 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
             losses.update(loss.item(), B)
             losses_flow_spatial.update(loss_flow_spatial.item(), B)
             losses_flow_temporal.update(loss_flow_temporal.item(), B)
-        
-        query_features_list.append(video_features_test.cpu().numpy())
-        query_labels_list.append(activities[:, 0].cpu().numpy())
-    query_features = np.vstack(query_features_list)
-    print("query_features NaN:", np.isnan(query_features).any())
-    query_labels = np.hstack(query_labels_list)
-    
+
+        query_features_list.append(video_features_test.detach())
+        query_labels_list.append(activities[:, 0].to(device))
+
+    query_features = torch.cat(query_features_list, dim=0)  # [N_test, D]
+    query_labels = torch.cat(query_labels_list, dim=0)      # [N_test]
+    print("query_features NaN:", torch.isnan(query_features).any().item())
+
     k_list = [1, 2, 3]
-    hit_rates, precisions = calculate_hit_and_precision(
-        train_features=train_features,
-        train_labels=train_labels,
-        query_features=query_features,
-        query_labels=query_labels,
-        k_list=k_list
-    )
+    hit_rates = {}
+    precisions = {}
+
+    match_score = torch.cdist(query_features, train_features, p=2)
+    match_score_argsort = torch.argsort(match_score, dim=1) 
+
+    num_query = query_labels.shape[0]
+
+    for k in k_list:
+        topk_idx = match_score_argsort[:, :k]          # [N_test, k]
+        topk_labels = train_labels[topk_idx]           # [N_test, k]
+
+        query_labels_expand = query_labels.view(-1, 1).expand(num_query, k)
+        correct = (topk_labels == query_labels_expand)  # [N_test, k]
+
+        hit_any = (correct.sum(dim=1) >= 1).float()
+        hit_rate_k = hit_any.mean().to('cpu').item() * 100.0
+        hit_rates[k] = hit_rate_k
+
+        precision_k = (correct.sum(dim=1).float() / k).mean().to('cpu').item() * 100.0
+        precisions[k] = precision_k
 
     hit_rate_1 = hit_rates[1]
     hit_rate_2 = hit_rates[2]
@@ -794,6 +851,7 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
         best_val_epoch = epoch
         save_best_model_by_loss(epoch, model, optimizer, scheduler, best_val_loss, save_path)
 
+
     val_log = {
         'epoch': epoch,
         'time': epoch_timer.timeit(),
@@ -809,22 +867,29 @@ def validate(train_loader_for_val, test_loader, model, criterion, epoch, optimiz
         'best_hit_rate': best_hit_rate,
         'best_hit_epoch': best_hit_epoch,
     }
-    log_metrics_to_wandb(train_log=None, test_log=val_log)
+    if args.use_wandb:
+        log_metrics_to_wandb(train_log=None, test_log=val_log)
     return val_log
 
 def worker_init_fn(worker_id):
-    seed = args.random_seed + worker_id
-    np.random.seed(seed)
-    random.seed(seed)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
 
 def main():
     global args, best_hit_rate, best_hit_epoch, best_model_path
-
-    initialize_wandb(args)
+    
+    if args.use_wandb:
+        initialize_wandb(args)
 
     time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-    exp_name = '[%s]_dino_flow_ball_numpy<%s>' % (args.dataset, time_str)
-    save_path = './retrieval_result/%s' % exp_name
+    if args.pretrained_weights != '':
+        exp_name = '[%s]_dino_flow_ball_finetune<%s>' % (args.dataset, time_str)
+        save_path = './finetune_result/%s' % exp_name
+    else:
+        exp_name = '[%s]_dino_flow_ball<%s>' % (args.dataset, time_str)
+        save_path = './retrieval_result/%s' % exp_name
     os.makedirs(save_path, exist_ok=True)
 
     random.seed(args.random_seed)
@@ -832,16 +897,29 @@ def main():
     torch.manual_seed(args.random_seed)
     torch.cuda.manual_seed(args.random_seed)
     torch.cuda.manual_seed_all(args.random_seed)
+    
+    torch.use_deterministic_algorithms(True)
+    
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
+    
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    
     train_set, train_set_for_val, test_set, _, _, _, _, _ = read_dataset(args)
+    
+    
     train_loader = data.DataLoader(train_set, batch_size=args.batch, shuffle=True, num_workers=2, pin_memory=True, worker_init_fn=worker_init_fn)
     train_loader_for_val = data.DataLoader(train_set_for_val, batch_size=args.feature_batch, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=worker_init_fn)
     test_loader = data.DataLoader(test_set, batch_size=args.test_batch, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=worker_init_fn)
-
+    
     model = models.Ball_detect_model(args)
     model = torch.nn.DataParallel(model).cuda()
+    
+    if args.pretrained_weights:
+        checkpoint = torch.load(args.pretrained_weights, map_location='cuda', weights_only=False)
+        model.load_state_dict(checkpoint['state_dict'], strict=False)
+        print(f"Loaded pretrained weights from {args.pretrained_weights}, entering fine-tune mode.")
     
     if args.ball_lama or args.people_lama:
         lama_model = load_lama_model(args.lama_model_dir, checkpoint_name=args.checkpoint_name, device='cuda')
@@ -874,8 +952,8 @@ def main():
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=args.epochs,
-        eta_min=1e-6
+        T_max=args.epochs,           
+        eta_min=1e-6         
     )
     
     start_epoch = 1
@@ -886,10 +964,12 @@ def main():
         print_log(save_path, 'Train - Epoch: %d, Loss: %.4f, Time: %.1f sec' % (epoch, train_log['loss'], train_log['time']))
         current_lr = scheduler.get_last_lr()[0]
         print('Current learning rate: %f' % current_lr)
-        wandb.log({"learning_rate": current_lr, "epoch": epoch})
+        if args.use_wandb:
+            wandb.log({"learning_rate": current_lr, "epoch": epoch})
         scheduler.step()
 
         if epoch % args.test_freq == 0:
+        # if epoch >= 25 and epoch % args.test_freq == 0:
             print_log(save_path, '----- Validate at epoch #%d' % epoch)
             val_log = validate(train_loader_for_val, test_loader, model, criterion, epoch, optimizer, scheduler, save_path)
             print_log(save_path, 'Validation - Epoch: %d, Loss: %.4f, Time: %.1f sec, Hit@1: %.2f%%, Hit@2: %.2f%%, Hit@3: %.2f%%' %
@@ -897,12 +977,10 @@ def main():
             print_log(save_path, 'Best Hit@1: %.2f%% at epoch #%d.' % (val_log['best_hit_rate'], val_log['best_hit_epoch']))
 
     if best_model_path is not None:
-        print("Loading best-hit model:", best_model_path)
+        print("Training complete. Loading best model from:", best_model_path)
         checkpoint = torch.load(best_model_path)
         model.load_state_dict(checkpoint['state_dict'])
-        eval_dir_hit = os.path.join(save_path, "eval_best_hit")
-        os.makedirs(eval_dir_hit, exist_ok=True)
-        test_evaluation(train_loader_for_val, test_loader, model, args, eval_dir_hit)
+        test_evaluation(train_loader_for_val, test_loader, model, args, save_path)
     else:
         print("No best model was saved.")
         

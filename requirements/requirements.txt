@@ -1,9 +1,10 @@
 numpy==1.26.4
 omegaconf
+loralib
+openpyxl
 torchmetrics==0.10.3
 fvcore
 iopath
-xformers==0.0.22.post7
 submitit
 scikit-learn==1.1.3
 tqdm
@@ -13,7 +14,6 @@ seaborn
 pyyaml
 easydict==1.9.0
 scikit-image>=0.19.0
-tensorflow>=2.10.0
 joblib
 matplotlib
 pandas
@@ -24,7 +24,4 @@ tabulate
 kornia>=0.6.0
 webdataset
 packaging
-wldhx.yadisk-direct
---extra-index-url https://pypi.nvidia.com
-cuml-cu11
-loralib
+transformers==4.56.0

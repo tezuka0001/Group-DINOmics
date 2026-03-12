@@ -4,7 +4,7 @@ This is an implementation of the paper: **Group-DINOmics: Incorporating People D
 
 ## Environment
 Python 3.10.10  
-PyTorch 2.1.0
+PyTorch 2.2.2
 
 ```
 pip install -r requiremets/requirements.txt
@@ -26,7 +26,7 @@ We use RAFT (https://github.com/princeton-vl/RAFT) to compute optical flow.
 The precomputed optical flow is published here (coming soon).
 
   
-### 3 Group-relevant Object location
+### 3. Group-relevant Object Location
 We use a ball as a group-relevant object in our experiments.
 * Volleyball dataset
 Annotated ball locations in the frames are available here (https://github.com/mostafa-saad/deep-activity-rec).  

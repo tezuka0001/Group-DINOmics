@@ -44,7 +44,7 @@ def volleyball_all_frames(labels):
 
 
 class VolleyballDataset(data.Dataset):
-    def __init__(self, frames, tracks, anns, image_path, args, is_training=True, ball_annotation_path=None, tracking_path=None):
+    def __init__(self, frames, tracks, anns, image_path, args, is_training=True, ball_annotation_path=None, tracking_path=None, net_annotation_path=None):
         super(VolleyballDataset, self).__init__()
         self.frames = frames
         self.tracks = tracks
@@ -57,6 +57,7 @@ class VolleyballDataset(data.Dataset):
             self.tracks = self.load_people_tracks()
         self.image_path = image_path
         self.ball_annotation_path = ball_annotation_path
+        self.net_annotation_path = net_annotation_path
         self.image_size = (args.image_width, args.image_height)
         self.random_sampling = args.random_sampling
         self.num_frame = args.num_frame
@@ -78,6 +79,7 @@ class VolleyballDataset(data.Dataset):
             transforms.ToTensor(),
         ])
         self.ball_annotations = self.load_ball_annotations()
+        self.net_annotations = self.load_net_annotations()
         self.use_flow = args.use_flow
         self.use_flow_numpy = args.use_flow_numpy
 
@@ -93,20 +95,22 @@ class VolleyballDataset(data.Dataset):
                 tracks[(sid, src_fid)] = {}
                 with open(track_file, 'r') as f:
                     lines = f.read().strip().splitlines()
-                
+
                 offset = int(src_fid) - 20
 
                 for line in lines:
                     values = line.strip().split(',')
+
                     if len(values) < 6:
                         continue
                     relative_frame = int(values[0])
                     actual_fid = relative_frame + offset
+
                     x = float(values[2])
                     y = float(values[3])
                     w = float(values[4])
                     h = float(values[5])
-                    
+
                     if int(sid) in [2, 37, 38, 39, 40, 41, 44, 45]:
                         norm_y1 = y / 1080.0
                         norm_x1 = x / 1920.0
@@ -164,6 +168,58 @@ class VolleyballDataset(data.Dataset):
                     coords[current_fid] = (y, x)
                 ball_annotations[sid][src_fid] = coords
         return ball_annotations
+    
+    def load_net_annotations(self):
+        net_annotations = {}
+        if self.net_annotation_path is None:
+            return net_annotations
+
+        for sid in self.anns.keys():
+            for src_fid in self.anns[sid].keys():
+                net_dir = os.path.join(self.net_annotation_path, f"{sid}", f"{src_fid}")
+                if not os.path.exists(net_dir):
+                    continue
+
+                net_annotations[(sid, src_fid)] = {}
+
+                image_dir = os.path.join(self.image_path, f"{sid}", f"{src_fid}")
+                if not os.path.exists(image_dir):
+                    continue
+
+                file_names = sorted(os.listdir(image_dir), key=lambda x: int(os.path.splitext(x)[0]))
+                fids = [int(os.path.splitext(x)[0]) for x in file_names]
+
+                for fid in fids:
+                    csv_path = os.path.join(net_dir, f"{fid}.csv")
+                    if not os.path.exists(csv_path):
+                        net_annotations[(sid, src_fid)][fid] = (0.0, 0.0, 0.0, 0.0)
+                        continue
+
+                    with open(csv_path, "r") as f:
+                        lines = f.read().strip().splitlines()
+
+                    if len(lines) < 2:
+                        net_annotations[(sid, src_fid)][fid] = (0.0, 0.0, 0.0, 0.0)
+                        continue
+
+                    parts = lines[1].split(",")
+                    if len(parts) < 4:
+                        net_annotations[(sid, src_fid)][fid] = (0.0, 0.0, 0.0, 0.0)
+                        continue
+
+                    xmin = float(parts[0])
+                    ymin = float(parts[1])
+                    xmax = float(parts[2])
+                    ymax = float(parts[3])
+
+                    xmin = max(0.0, min(1.0, xmin))
+                    ymin = max(0.0, min(1.0, ymin))
+                    xmax = max(0.0, min(1.0, xmax))
+                    ymax = max(0.0, min(1.0, ymax))
+
+                    net_annotations[(sid, src_fid)][fid] = (xmin, ymin, xmax, ymax)
+
+        return net_annotations
 
     def __getitem__(self, idx):
         frames = self.select_frames(self.frames[idx])
@@ -198,6 +254,7 @@ class VolleyballDataset(data.Dataset):
         if self.use_flow or self.use_flow_numpy:
             optical_flow = []
         boxes, boxes_idx = [], []
+        net_boxes = []
 
         for i, (sid, src_fid, fid) in enumerate(frames):
             img_path = os.path.join(self.image_path, '%d' % sid, '%d' % src_fid, '%d.jpg' % fid)
@@ -205,8 +262,16 @@ class VolleyballDataset(data.Dataset):
             img = self.transform(img)
             images.append(img)
             activities.append(self.anns[sid][src_fid]['group_activity'])
+            if self.use_flow:
+                flow_dir = self.image_path.replace('videos', 'flow_min_max')
+                flow_path = os.path.join(flow_dir, '%d' % sid, '%d' % src_fid, '%d_flow.jpg' % fid)
+                flow = Image.open(flow_path)
+                flow = self.transform_flow(flow)
+                flow = flow[1:3, :, :]
+                optical_flow.append(flow)
             if self.use_flow_numpy:
                 if tuple(self.image_size) in {(448, 252), (512, 288), (224, 224), (256, 256)}:
+                    # flow_dir = self.image_path.replace('videos', 'flow_numpy')
                     flow_dir = self.image_path.replace('videos', 'flow_numpy_sub_med')
                 elif self.image_size == (896, 504) or self.image_size == (1024, 576): 
                     flow_dir = self.image_path.replace('videos', 'flow_numpy_sub_med_36x64')
@@ -231,6 +296,13 @@ class VolleyballDataset(data.Dataset):
                 norm_x = ball_coord[1] / 720.0
             normalized_ball_coord = (norm_y, norm_x)
             ball_coords.append(torch.tensor(normalized_ball_coord, dtype=torch.float))
+            
+            if (sid, src_fid) in self.net_annotations and fid in self.net_annotations[(sid, src_fid)]:
+                xmin, ymin, xmax, ymax = self.net_annotations[(sid, src_fid)][fid]
+            else:
+                xmin, ymin, xmax, ymax = (0.0, 0.0, 0.0, 0.0)
+
+            net_boxes.append(torch.tensor([xmin, ymin, xmax, ymax], dtype=torch.float))
 
             if self.detector_mode:
                 if (sid, src_fid) in self.tracks and fid in self.tracks[(sid, src_fid)]:
@@ -278,9 +350,10 @@ class VolleyballDataset(data.Dataset):
         bboxes = torch.tensor(bboxes, dtype=torch.float)
         bboxes_idx = np.hstack(boxes_idx).reshape([-1,self.num_boxes])
         bboxes_idx = torch.tensor(bboxes_idx, dtype=torch.int32)
+        net_boxes = torch.stack(net_boxes)
         
         if self.use_flow or self.use_flow_numpy:
-            return images, activities, ball_coords, optical_flow, bboxes, bboxes_idx
+            return images, activities, ball_coords, optical_flow, bboxes, bboxes_idx, net_boxes
 
         else:
-            return images, activities, ball_coords, bboxes, bboxes_idx
+            return images, activities, ball_coords, bboxes, bboxes_idx, net_boxes
