@@ -7,6 +7,7 @@ Python 3.10.10
 PyTorch 2.2.2
 
 ```
+pip install torch (e.g. 2.2.2)
 pip install -r requiremets/requirements.txt
 ```
 
