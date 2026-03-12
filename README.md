@@ -3,11 +3,11 @@
 This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning**
 
 ## Environment
-Python 3.10.10  
-PyTorch 2.2.2
-
+* Python 3.10.10  
+* PyTorch 2.2.2
+1. Please install the appropriate version of PyTorch from here (https://pytorch.org).
+2. Please install the remaining dependencies by running.
 ```
-pip install torch (e.g. 2.2.2)
 pip install -r requiremets/requirements.txt
 ```
 
@@ -18,7 +18,7 @@ And place the downloaded weights at: `./lama/big-lama/models/best.ckpt`
 ## Data preparation
 ### 1. Download dataset
 * Volleyball dataset (Dataset/volleyball)
-  https://github.com/mostafa-saad/deep-activity-rec
+  Please dawnload the dataset from here (https://github.com/mostafa-saad/deep-activity-rec).
 * NBA dataset (Dataset/NBA_dataset)
   The dataset can be obtained by contacting the authors of “Social Adaptive Module for Weakly-supervised Group Activity Recognition, ECCV 2020” (https://ruiyan1995.github.io/SAM.html).
 
@@ -35,6 +35,25 @@ Detected ball locations using the WASB detector (https://github.com/nttcom/WASB-
 
 * NBA dataset
 Detected ball locations using the WASB detector are published here (coming soon), as in the Volleyball dataset.
+
+### 4. File structure
+│── Dataset/ <br/>
+│   │── volleyball/ <br/>
+│   │    └── videos/ <br/>
+│   │    └── flow_numpy_sub_med/ <br/>
+│   │    └── wasb/ <br/>
+│   │    └── volleyball_tracks_deep_eiou/ <br/>
+│   │    └── volleyball_weak/ <br/>
+│   │    └── tracks_normalized.pkl/ <br/>
+│   │── NBA_dataset/ <br/>
+│   │    └── videos/ <br/>
+│   │    └── train_video_ids <br/>
+│   │    └── test_video_ids <br/>
+│   │    └── flow_numpy_sub_med/ <br/>
+│   │    └── wasb/ <br/>
+│   │    └── tracks_deep_eiou_prune_72/ <br/>
+│   │    └── nba (if you use basketball gaol location)/ <br/>
+
 
 ## Training
 ### 1. First stage
@@ -53,6 +72,7 @@ bash scripts/train_NBA.sh
 
 ### 2. Second stage
 Our model is trained with the Group-relevant Object Location Loss in the second stage.
+Please run the model using the weights obtained by the first stage.
 * Volleyball dataset
   
 ```
@@ -78,3 +98,12 @@ bash scripts/test_VBD.sh
 ```
 bash scripts/test_NBA.sh
 ```
+
+## Acknowledgement
+This project builds upon many outstanding open-source projects and datasets. We would like to sincerely thank the authors and contributors of the following works:
+
+* [DFWSGAR](https://github.com/dk-kim/DFWSGAR) and [GAFL](https://github.com/chihina/GAFL-CVPR2024) for group activity recgnition/retrieval.
+ * [Volleyball dataset](https://github.com/mostafa-saad/deep-activity-rec), [MP-GCN](https://github.com/mgiant/MP-GCN) and [NBA dataset](https://ruiyan1995.github.io/SAM.html) for datasets.
+* [LaMa](https://github.com/advimman/lama) for inpainting.
+* [RAFT](https://github.com/princeton-vl/RAFT) for optical flow estimation.
+* [WASB](https://github.com/nttcom/WASB-SBDT) for ball tracking.

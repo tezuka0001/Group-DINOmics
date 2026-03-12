@@ -123,6 +123,8 @@ parser.add_argument('--enc_layers', default=6, type=int, help='number of encoder
 parser.add_argument('--pre_norm', action='store_true', help='pre normalization')
 parser.add_argument('--position_embedding', default='sine', type=str, help='various position encoding')
 
+parser.add_argument('--use_wandb', action='store_true', help='use wandb for logging')
+
 args = parser.parse_args()
 args.use_flow = False
 args.use_flow_numpy = args.flow_pred
@@ -649,7 +651,8 @@ def train(args, train_loader, model, criterion, ce_criterion, optimizer, epoch, 
         'loss_supervised': losses_supervised.avg,
         'grad_norm': grad_norms.avg,
     }
-    log_metrics_to_wandb(train_log, test_log=None)
+    if args.use_wandb:
+        log_metrics_to_wandb(train_log, test_log=None)
     return train_log
 
 @torch.no_grad()
@@ -823,7 +826,8 @@ def validate(train_loader_for_val, test_loader, model, criterion, ce_criterion, 
             'best_hit_rate': best_hit_rate,
             'best_hit_epoch': best_hit_epoch,
         }
-    log_metrics_to_wandb(train_log=None, test_log=val_log)
+    if args.use_wandb:
+        log_metrics_to_wandb(train_log=None, test_log=val_log)
     return val_log
 
 def worker_init_fn(worker_id):
@@ -834,7 +838,8 @@ def worker_init_fn(worker_id):
 def main():
     global args, best_hit_rate, best_hit_epoch, best_model_path
 
-    initialize_wandb(args)
+    if args.use_wandb:
+        initialize_wandb(args)
     
     time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     exp_name = '[%s]_dino_flow_ball_GAR<%s>' % (args.dataset, time_str)
@@ -892,7 +897,8 @@ def main():
         print_log(save_path, 'Train - Epoch: %d, Loss: %.4f, Time: %.1f sec' % (epoch, train_log['loss'], train_log['time']))
         current_lr = scheduler.get_last_lr()[0]
         print('Current learning rate: %f' % current_lr)
-        wandb.log({"learning_rate": current_lr, "epoch": epoch})
+        if args.use_wandb:
+            wandb.log({"learning_rate": current_lr, "epoch": epoch})
         scheduler.step()
 
         if epoch % args.test_freq == 0:
