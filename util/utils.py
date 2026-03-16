@@ -294,3 +294,42 @@ def add_ball_noise_px_skip_zeros(
     noisy = (ball_gt + noise).clamp(0.0, 1.0)
     noisy[~valid] = 0.0
     return noisy
+
+# for jrdb dataset
+def masked_mse_loss_center(
+    flow_pred: torch.Tensor,        # (B, T, N, 2)
+    flow_gt: torch.Tensor,          # (B, T, N, 2)
+    existence_mask: torch.Tensor,   # (B, T, N) bool
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Compute masked MSE loss ONLY on a "center" frame.
+    Center index rule (0-based): t0 = T//2 + 1
+      - T=5  -> t0=3
+      - T=10 -> t0=6
+      - T=15 -> t0=8
+    If t0 is out of range (e.g., T=1), it is clamped to T-1.
+    """
+    assert flow_pred.shape == flow_gt.shape, "flow_pred and flow_gt must have the same shape"
+    assert flow_pred.dim() == 4 and flow_pred.size(-1) == 2, "flow_* must be (B, T, N, 2)"
+    assert existence_mask.shape == flow_pred.shape[:-1], "existence_mask must be (B, T, N)"
+
+    B, T, N, _ = flow_pred.shape
+
+    # center index (0-based) with your rule, clamped for safety
+    t0 = min(T - 1, T // 2 + 1)
+
+    # slice center frame: (B, N, 2) and mask (B, N)
+    fp = flow_pred[:, t0]
+    fg = flow_gt[:, t0]
+    mask = existence_mask[:, t0]
+
+    per_inst = (fp - fg).pow(2).mean(dim=-1)  # (B, N)
+
+    weights = mask.float()  # 1: valid, 0: padding
+    denom = weights.sum()
+
+    if denom.item() == 0:
+        return flow_pred.sum() * 0.0  # grad-safe
+
+    return (per_inst * weights).sum() / (denom + eps)
