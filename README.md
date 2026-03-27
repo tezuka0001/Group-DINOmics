@@ -1,9 +1,13 @@
+<!-- <div align="center"> -->
+<!-- <img align="left" width="100" height="100" src="assets/logo.png" alt=""> -->
+
 # Group-DINOmics
+<!-- </div> -->
+This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning (CVPR2026 Findings)**.
 
-This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning**
-このリポジトリは研究室に保存用のものです．
+Author: [Ryuki Tezuka](https://tezuka0001.github.io/), [Chihiro Nakatani](https://chihina.github.io/portfolio_english.html), [Norimichi Ukita](https://www.toyota-ti.ac.jp/Lab/Denshi/iim/ukita/index.html)
 
-## Environment
+## ⚙️ Environment
 * Python 3.10.10  
 * PyTorch 2.2.2
 1. Please install the appropriate version of PyTorch from here (https://pytorch.org).
@@ -12,16 +16,16 @@ This is an implementation of the paper: **Group-DINOmics: Incorporating People D
 pip install -r requiremets/requirements.txt
 ```
 
-### DINOv3
+### DINOv3 🦖🦖🦖
 We use [DINOv3](https://github.com/facebookresearch/dinov3) as the image feature extractor.
 This project uses DINOv3 via Hugging Face Transformers. For detailed usage instructions, please refer to [this page](https://github.com/facebookresearch/dinov3)
 
-### Inpaint
+### LaMa 🦙
 We use LaMa as the inpainting model.  
 Please download the pretrained weights from here (https://github.com/advimman/lama).  
 And place the downloaded weights at: `./lama/big-lama/models/best.ckpt`
 
-## Data preparation
+## 📊 Data preparation
 ### 1. Download dataset
 * Volleyball dataset (Dataset/volleyball)
   Please dawnload the dataset from here (https://github.com/mostafa-saad/deep-activity-rec).
@@ -30,50 +34,43 @@ And place the downloaded weights at: `./lama/big-lama/models/best.ckpt`
 
 ### 2. Optical Flow
 We use RAFT (https://github.com/princeton-vl/RAFT) to compute optical flow.  
-The precomputed optical flow is published here (coming soon).
+The precomputed optical flow is published [here](https://drive.google.com/drive/folders/1ARD9s7Hxb5p0vqP04DiwMtaA9S90XkmM?usp=sharing).
 
   
 ### 3. Group-relevant Object Location
 We use a ball as a group-relevant object in our experiments.
 * Volleyball dataset
 Annotated ball locations in the frames are available here (https://github.com/mostafa-saad/deep-activity-rec).  
-Detected ball locations using the WASB detector (https://github.com/nttcom/WASB-SBDT) are published here (coming soon) for Weakly Supervised GAR.
+Detected ball locations using the WASB detector (https://github.com/nttcom/WASB-SBDT) are published [here](https://drive.google.com/drive/folders/1ARD9s7Hxb5p0vqP04DiwMtaA9S90XkmM?usp=sharing) for Weakly Supervised GAR.
 
 * NBA dataset
-Detected ball locations using the WASB detector are published here (coming soon), as in the Volleyball dataset.
+Detected ball locations using the WASB detector are published [here](https://drive.google.com/drive/folders/1ARD9s7Hxb5p0vqP04DiwMtaA9S90XkmM?usp=sharing), as in the Volleyball dataset.
 
 ### 4. File structure
-│── Dataset/ <br/>
-│   │── volleyball/ <br/>
-│   │    └── videos/ <br/>
-│   │    └── flow_numpy_sub_med/ <br/>
-│   │    └── flow_numpy_sub_med_36x64/ <br/>
-│   │    └── wasb/ <br/>
-│   │    └── volleyball_tracks_deep_eiou/ <br/>
-│   │    └── volleyball_weak/ <br/>
-│   │    └── tracks_normalized.pkl/ <br/>
-│   │    └── volleyball_net_detection_all_frames (if you use volleyball net location)/ <br/>
-│   │── NBA_dataset/ <br/>
-│   │    └── videos/ <br/>
-│   │    └── train_video_ids <br/>
-│   │    └── test_video_ids <br/>
-│   │    └── flow_numpy_sub_med/ <br/>
-│   │    └── flow_numpy_sub_med_36x64/ <br/>
-│   │    └── wasb/ <br/>
-│   │    └── tracks_deep_eiou_prune_72/ <br/>
-│   │    └── nba (if you use basketball gaol location)/ <br/>
-│   │    └── train_ids (limited data) <br/>
-│   │── jrdb_par/ <br/>
-│   │    └── videos/ <br/>
-│   │    └── annotations <br/>
-│   │    └── flow_numpy_sub_med_8x63 <br/>
-│   │    └── flow_numpy_sub_med_8x63_2gap <br/>
-│   │    └── flow_numpy_sub_med_8x63_3gap <br/>
-│   │    └── flow_numpy_sub_med_8x63_7gap <br/>
-│   │    └── flow_numpy_sub_med_8x63_15gap <br/>
+```
+Dataset/
+├── volleyball/
+│   ├── videos/
+│   ├── flow_numpy_sub_med/
+│   ├── flow_numpy_sub_med_36x64/
+│   ├── wasb/
+│   ├── volleyball_tracks_deep_eiou/
+│   ├── volleyball_weak/
+│   ├── tracks_normalized.pkl
+│   └── volleyball_net_detection_all_frames/   # optional, if you use volleyball net location
+│
+└── NBA_dataset/
+    ├── videos/
+    ├── train_video_ids
+    ├── test_video_ids
+    ├── flow_numpy_sub_med/
+    ├── wasb/
+    ├── tracks_deep_eiou_prune_72/
+    └── nba/   # optional, if you use basketball goal location
+```
 
 
-## Training
+## 💪🏻 Training
 ### 1. First stage
 Our model is trained with the Flow Estimation Loss in the first stage.
 * Volleyball dataset
@@ -103,11 +100,6 @@ bash scripts/finetune_VBD.sh
 bash scripts/finetune_NBA.sh
 ```
 
-### JRDB PAR
-```
-bash scripts/jrdb_train_test_flow_ball.sh
-```
-
 ### Group Activity Recognition
 The model trained on the pretext task can also be used for pretraining in group activity recognition.
 Please run the model using the weights by the second stage.
@@ -123,8 +115,8 @@ bash scripts/WSGAR_VBD.sh
 bash scripts/WSGAR_NBA.sh
 ```
 
-## Evaluation
-Trained models are published here (coming soon).
+## 🚀 Evaluation
+Trained models are published [here](https://drive.google.com/drive/folders/1ARD9s7Hxb5p0vqP04DiwMtaA9S90XkmM?usp=sharing).
 * Volleyball dataset
   
 ```
@@ -137,7 +129,7 @@ bash scripts/test_VBD.sh
 bash scripts/test_NBA.sh
 ```
 
-## Acknowledgement
+## 🤩 Acknowledgement
 This project builds upon many outstanding open-source projects and datasets. We would like to sincerely thank the authors and contributors of the following works:
 
 * [DFWSGAR](https://github.com/dk-kim/DFWSGAR) and [GAFL](https://github.com/chihina/GAFL-CVPR2024) for group activity recgnition/retrieval.
