@@ -1,8 +1,8 @@
-<!-- <div align="center"> -->
-<!-- <img align="left" width="100" height="100" src="assets/logo.png" alt=""> -->
+<div align="center">
+<img align="left" width="40" height="40" src="DINO.png" alt="">
 
 # Group-DINOmics
-<!-- </div> -->
+</div>
 This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning (CVPR2026 Findings)**.
 
 Author: [Ryuki Tezuka](https://tezuka0001.github.io/), [Chihiro Nakatani](https://chihina.github.io/portfolio_english.html), [Norimichi Ukita](https://www.toyota-ti.ac.jp/Lab/Denshi/iim/ukita/index.html)
