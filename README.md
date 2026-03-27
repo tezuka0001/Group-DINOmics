@@ -1,9 +1,11 @@
 <div align="center">
-<img align="left" width="40" height="40" src="DINO.png" alt="">
+<img align="left" height="80" src="DINO.png" alt="">
+<img align="right" height="80" src="group_DINO.png" alt="">
 
-# Group-DINOmics
+# Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning
 </div>
-This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning (CVPR2026 Findings)**.
+
+This is an implementation of the paper: **Group-DINOmics: Incorporating People Dynamics into DINO for Self-supervised Group Activity Feature Learning (CVPR2026 Findings).**
 
 Author: [Ryuki Tezuka](https://tezuka0001.github.io/), [Chihiro Nakatani](https://chihina.github.io/portfolio_english.html), [Norimichi Ukita](https://www.toyota-ti.ac.jp/Lab/Denshi/iim/ukita/index.html)
 
@@ -127,6 +129,11 @@ bash scripts/test_VBD.sh
   
 ```
 bash scripts/test_NBA.sh
+```
+
+## 🔍 Citation
+```
+coming soon
 ```
 
 ## 🤩 Acknowledgement
