@@ -15,7 +15,6 @@ wandb/
 
 *.ckpt
 *.pth
-*.png
 *.jpg
 *.zip
 *.mp4
